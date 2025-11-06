@@ -11,6 +11,7 @@ import subprocess
 from datetime import datetime
 from flask import Flask, request, jsonify
 from collections import defaultdict
+from traffic_adapter import TrafficAdapter  # ✅ Import adapter
 
 app = Flask(__name__)
 
@@ -24,6 +25,9 @@ DATA_DIR = "/data"
 # Load topology data vào memory
 topology_links = []
 topology_map = {}  # Key: (source, destination) -> link_data
+
+# ✅ Initialize Traffic Adapter
+traffic_adapter = TrafficAdapter()
 
 # ==============================
 # Load topology từ CSV
@@ -106,72 +110,13 @@ def find_link(source, destination):
 # Generate traffic metrics
 # ==============================
 def generate_traffic_metrics(link, content_length):
-    """Generate realistic traffic metrics cho VAE model"""
-    now = datetime.utcnow()
-    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Capacity & Bitrate
-    capacity_bps = link["capacity_bps"]
-    min_cap = link["min_capacity_bps"]
-    max_cap = link["max_capacity_bps"]
-    
-    # Simulate realistic bitrate (50-90% of capacity)
-    utilization = random.uniform(0.5, 0.9)
-    bitrate_bps = capacity_bps * utilization
-    
-    # Bytes sent (based on content length + overhead)
-    bytes_sent = content_length * 1024 * random.uniform(0.9, 1.1)
-    
-    # Latency metrics
-    base_latency = link["base_latency_milliseconds"]
-    link_latency = base_latency * random.uniform(0.95, 1.05)
-    rtt_milliseconds = link_latency * 2 + random.uniform(0, 10)
-    
-    # Network quality
-    reliability = link["reliability_score"]
-    loss_rate = (1 - reliability) * random.uniform(0.5, 2.0)
-    jitter_milliseconds = random.uniform(5, 15) * (1 + utilization * 0.5)
-    
-    # Temporal features
-    hour = now.hour
-    day_of_week = now.weekday()
-    is_weekend = 1 if day_of_week >= 5 else 0
-    
-    # Cyclic encoding
-    hour_sin = math.sin(2 * math.pi * hour / 24)
-    hour_cos = math.cos(2 * math.pi * hour / 24)
-    day_sin = math.sin(2 * math.pi * day_of_week / 7)
-    day_cos = math.cos(2 * math.pi * day_of_week / 7)
-    
-    # Performance metrics
-    throughput_mbps = bitrate_bps / 1_000_000
-    quality_score = reliability * (1 - loss_rate) * (1 - min(jitter_milliseconds / 100, 0.5))
-    efficiency = utilization * quality_score
-    
-    return {
-        "timestamp": timestamp,
-        "bytes_sent": round(bytes_sent, 2),
-        "bitrate_bps": round(bitrate_bps, 6),
-        "rtt_milliseconds": round(rtt_milliseconds, 6),
-        "loss_rate": round(loss_rate, 10),
-        "jitter_milliseconds": round(jitter_milliseconds, 6),
-        "link_latency_milliseconds": round(link_latency, 6),
-        "capacity_bps": capacity_bps,
-        "source_layer": link["source_layer"],
-        "destination_layer": link["destination_layer"],
-        "link_id": link["link_id"],
-        "hour": hour,
-        "day_of_week": day_of_week,
-        "is_weekend": is_weekend,
-        "hour_sin": round(hour_sin, 10),
-        "hour_cos": round(hour_cos, 10),
-        "day_sin": round(day_sin, 10),
-        "day_cos": round(day_cos, 10),
-        "utilization": round(utilization, 10),
-        "throughput_mbps": round(throughput_mbps, 10),
-        "quality_score": round(quality_score, 10),
-        "efficiency": round(efficiency, 10),
-    }
+    """
+    Generate realistic traffic metrics using TrafficAdapter
+    (Replaces old random generation with training-matched patterns)
+    """
+    # ✅ Use adapter instead of random values
+    metrics = traffic_adapter.generate_metrics(link, content_length)
+    return metrics
 
 # ==============================
 # Save traffic data to CSV
