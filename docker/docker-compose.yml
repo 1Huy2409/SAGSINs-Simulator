@@ -9,6 +9,14 @@ services:
     volumes:
       - ./data:/data
       - ./topology_data.csv:/app/topology_data.csv
+    environment:
+      # 🔮 Prediction Service Config (running on host)
+      - PREDICTION_SERVICE_URL=http://host.docker.internal:5000
+      - PREDICTION_ENABLED=true
+      - HOST_TRAFFIC_CSV=D:/HuyCoding/PBL4/SAGSINs-System/docker/data/traffic_data.csv
+    extra_hosts:
+      # Allow container to access host machine
+      - "host.docker.internal:host-gateway"
     networks:
       sagsin_net:
         ipv4_address: 10.10.0.100

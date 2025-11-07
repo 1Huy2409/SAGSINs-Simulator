@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 SAGSINs Server - Nhận packet từ Web App, tìm topology, tạo traffic và lưu CSV
++ Auto predict by calling external prediction service
 """
 import os
 import csv
@@ -8,30 +9,34 @@ import json
 import math
 import random
 import subprocess
+import sys
+import requests
 from datetime import datetime
 from flask import Flask, request, jsonify
 from collections import defaultdict
-from traffic_adapter import TrafficAdapter  # ✅ Import adapter
+from traffic_adapter import TrafficAdapter
 
 app = Flask(__name__)
 
 # ==============================
-# Cấu hình
+# Configuration
 # ==============================
+# Prediction Service URL (running on host machine)
+PREDICTION_SERVICE_URL = os.getenv('PREDICTION_SERVICE_URL', 'http://host.docker.internal:5000')
+PREDICTION_ENABLED = os.getenv('PREDICTION_ENABLED', 'true').lower() == 'true'
+
+print(f"🔮 Prediction Service: {PREDICTION_SERVICE_URL}")
+print(f"   Enabled: {PREDICTION_ENABLED}")
+
 TOPOLOGY_FILE = "/app/topology_data.csv"
 TRAFFIC_OUTPUT = "/data/traffic_data.csv"
 DATA_DIR = "/data"
 
 # Load topology data vào memory
 topology_links = []
-topology_map = {}  # Key: (source, destination) -> link_data
-
-# ✅ Initialize Traffic Adapter
+topology_map = {} 
 traffic_adapter = TrafficAdapter()
 
-# ==============================
-# Load topology từ CSV
-# ==============================
 def load_topology():
     global topology_links, topology_map
     
@@ -67,8 +72,57 @@ def load_topology():
         print(f"❌ Error loading topology: {e}")
 
 # ==============================
-# Initialize traffic CSV với headers
+# Prediction Service Client
 # ==============================
+def call_prediction_service(csv_path):
+    """
+    Call external prediction service via HTTP
+    
+    Args:
+        csv_path: Path to traffic_data.csv (accessible from host)
+    
+    Returns:
+        dict: Prediction results hoặc None nếu lỗi
+    """
+    if not PREDICTION_ENABLED:
+        return None
+    
+    try:
+        print(f"🔮 Calling prediction service at {PREDICTION_SERVICE_URL}...")
+        
+        # Call prediction API
+        response = requests.post(
+            f"{PREDICTION_SERVICE_URL}/predict",
+            json={
+                "csv_path": csv_path,
+                "use_latest": True
+            },
+            timeout=10  # 10 second timeout
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('status') == 'success' and data.get('prediction'):
+                print(f"✅ Received prediction from service")
+                return data['prediction']
+            else:
+                print(f"⚠️  Prediction service returned error: {data.get('error')}")
+                return None
+        else:
+            print(f"⚠️  Prediction service error: {response.status_code}")
+            return None
+            
+    except requests.exceptions.ConnectionError:
+        print(f"⚠️  Cannot connect to prediction service at {PREDICTION_SERVICE_URL}")
+        print(f"   → Make sure service is running: python prediction_service.py")
+        return None
+    except requests.exceptions.Timeout:
+        print(f"⚠️  Prediction service timeout")
+        return None
+    except Exception as e:
+        print(f"⚠️  Error calling prediction service: {e}")
+        return None
+
 def init_traffic_csv():
     os.makedirs(DATA_DIR, exist_ok=True)
     
@@ -84,11 +138,8 @@ def init_traffic_csv():
         with open(TRAFFIC_OUTPUT, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(headers)
-        print(f"✅ Initialized traffic CSV: {TRAFFIC_OUTPUT}")
+        print(f"Initialized traffic CSV: {TRAFFIC_OUTPUT}")
 
-# ==============================
-# Tìm link từ topology
-# ==============================
 def find_link(source, destination):
     """Tìm link trực tiếp hoặc qua intermediate nodes"""
     # Direct link
@@ -106,21 +157,10 @@ def find_link(source, destination):
     
     return None
 
-# ==============================
-# Generate traffic metrics
-# ==============================
 def generate_traffic_metrics(link, content_length):
-    """
-    Generate realistic traffic metrics using TrafficAdapter
-    (Replaces old random generation with training-matched patterns)
-    """
-    # ✅ Use adapter instead of random values
     metrics = traffic_adapter.generate_metrics(link, content_length)
     return metrics
 
-# ==============================
-# Save traffic data to CSV
-# ==============================
 def save_traffic_data(metrics):
     """Append traffic data to CSV file"""
     try:
@@ -136,9 +176,29 @@ def save_traffic_data(metrics):
                 metrics["utilization"], metrics["throughput_mbps"],
                 metrics["quality_score"], metrics["efficiency"]
             ])
-        print(f"✅ Saved traffic data: {metrics['link_id']}")
+        print(f"Saved traffic data: {metrics['link_id']}")
     except Exception as e:
-        print(f"❌ Error saving traffic data: {e}")
+        print(f"Error saving traffic data: {e}")
+
+# ==============================
+# Auto Prediction sau khi save traffic
+# ==============================
+def predict_after_save(link_id):
+    """
+    Tự động chạy prediction bằng cách gọi external prediction service
+    
+    Args:
+        link_id: Link ID vừa được save
+    
+    Returns:
+        dict: Prediction results hoặc None nếu lỗi
+    """
+    # CSV path trên host machine (không phải trong container)
+    # Docker mounts ./data:/data, nên /data trong container = ./docker/data trên host
+    # Prediction service chạy trên host cần absolute path
+    host_csv_path = os.getenv('HOST_TRAFFIC_CSV', '/d/HuyCoding/PBL4/SAGSINs-System/docker/data/traffic_data.csv')
+    
+    return call_prediction_service(host_csv_path)
 
 # ==============================
 # Apply traffic shaping với tc
@@ -232,7 +292,10 @@ def receive_packet():
         # 3. Save to CSV
         save_traffic_data(metrics)
         
-        # 4. Apply traffic shaping to containers
+        # 4. 🔮 Auto Prediction
+        prediction = predict_after_save(link["link_id"])
+        
+        # 5. Apply traffic shaping to containers
         source_container = source.lower()
         dest_container = destination.lower()
         
@@ -242,12 +305,19 @@ def receive_packet():
         apply_traffic_shaping(source_container, delay_ms, rate_mbps)
         apply_traffic_shaping(dest_container, delay_ms, rate_mbps)
         
-        return jsonify({
+        # Response với prediction results
+        response_data = {
             "status": "success",
             "link": link["link_id"],
             "metrics": metrics,
             "message": "Traffic data saved and shaping applied"
-        })
+        }
+        
+        # Add prediction nếu có
+        if prediction:
+            response_data["prediction"] = prediction
+        
+        return jsonify(response_data)
         
     except Exception as e:
         print(f"❌ Error processing packet: {e}")
@@ -296,9 +366,6 @@ def get_topology():
         "links": topology_links
     })
 
-# ==============================
-# Initialize & Run
-# ==============================
 if __name__ == "__main__":
     print("="*60)
     print("🚀 SAGSINs Traffic Server Starting...")
