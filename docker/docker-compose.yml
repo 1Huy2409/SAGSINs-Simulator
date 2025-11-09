@@ -2,7 +2,7 @@ services:
   sagsins-server:
     build: ./server
     container_name: sagsins-server
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     ports:
       - "8080:8080"
@@ -13,19 +13,20 @@ services:
       # 🔮 Prediction Service Config (running on host)
       - PREDICTION_SERVICE_URL=http://host.docker.internal:5000
       - PREDICTION_ENABLED=true
-      - HOST_TRAFFIC_CSV=D:/HuyCoding/PBL4/SAGSINs-System/docker/data/traffic_data.csv
+      - HOST_TRAFFIC_CSV=E:\adocument\PBL4\Code\SAGSINs-Simulator\docker\data\traffic_data.csv
+      - TZ=Asia/Ho_Chi_Minh
     extra_hosts:
       # Allow container to access host machine
       - "host.docker.internal:host-gateway"
     networks:
       sagsin_net:
         ipv4_address: 10.10.0.100
-  
+
   # sample agent nodes
   sattelite_01:
     build: ./node
     container_name: SATELLITE_01
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=SATELLITE_01
@@ -39,7 +40,7 @@ services:
   sattelite_02:
     build: ./node
     container_name: SATELLITE_02
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=SATELLITE_02
@@ -53,7 +54,7 @@ services:
   sattelite_03:
     build: ./node
     container_name: SATELLITE_03
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=SATELLITE_03
@@ -67,7 +68,7 @@ services:
   uav_01:
     build: ./node
     container_name: UAV_01
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=UAV_01
@@ -79,9 +80,9 @@ services:
       sagsin_net:
         ipv4_address: 10.10.0.14
   uav_02:
-    build: ./node 
+    build: ./node
     container_name: UAV_02
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=UAV_02
@@ -95,7 +96,7 @@ services:
   ground_gateway_01:
     build: ./node
     container_name: GROUND_GATEWAY_01
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=GROUND_GATEWAY_01
@@ -109,7 +110,7 @@ services:
   ground_gateway_02:
     build: ./node
     container_name: GROUND_GATEWAY_02
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=GROUND_GATEWAY_02
@@ -123,7 +124,7 @@ services:
   ground_gateway_03:
     build: ./node
     container_name: GROUND_GATEWAY_03
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=GROUND_GATEWAY_03
@@ -137,7 +138,7 @@ services:
   ship_01:
     build: ./node
     container_name: SHIP_01
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=SHIP_01
@@ -151,7 +152,7 @@ services:
   ship_02:
     build: ./node
     container_name: SHIP_02
-    cap_add: 
+    cap_add:
       - NET_ADMIN
     environment:
       - NODE_ID=SHIP_02
@@ -163,7 +164,7 @@ services:
       sagsin_net:
         ipv4_address: 10.10.0.25
 
-networks: 
+networks:
   sagsin_net:
     driver: bridge
     ipam:
