@@ -9,17 +9,16 @@ import json
 import math
 import random
 import subprocess
-import sys
 import requests
 from datetime import datetime
 from flask import Flask, request, jsonify
 from collections import defaultdict
-from traffic_adapter import TrafficAdapter
+from traffic_adapter import TrafficAdapter  # ✅ Import adapter
 
 app = Flask(__name__)
 
 # ==============================
-# Configuration
+# Cấu hình
 # ==============================
 # Prediction Service URL (running on host machine)
 PREDICTION_SERVICE_URL = os.getenv('PREDICTION_SERVICE_URL', 'http://host.docker.internal:5000')
@@ -34,9 +33,14 @@ DATA_DIR = "/data"
 
 # Load topology data vào memory
 topology_links = []
-topology_map = {} 
+topology_map = {}  # Key: (source, destination) -> link_data
+
+# ✅ Initialize Traffic Adapter
 traffic_adapter = TrafficAdapter()
 
+# ==============================
+# Load topology từ CSV
+# ==============================
 def load_topology():
     global topology_links, topology_map
     
@@ -72,6 +76,46 @@ def load_topology():
         print(f"❌ Error loading topology: {e}")
 
 # ==============================
+# Initialize traffic CSV với headers
+# ==============================
+def init_traffic_csv():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    
+    if not os.path.exists(TRAFFIC_OUTPUT):
+        headers = [
+            "timestamp", "bytes_sent", "bitrate_bps", "rtt_milliseconds",
+            "loss_rate", "jitter_milliseconds", "link_latency_milliseconds",
+            "capacity_bps", "source_layer", "destination_layer", "link_id",
+            "hour", "day_of_week", "is_weekend", "hour_sin", "hour_cos",
+            "day_sin", "day_cos", "utilization", "throughput_mbps",
+            "quality_score", "efficiency"
+        ]
+        with open(TRAFFIC_OUTPUT, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+        print(f"✅ Initialized traffic CSV: {TRAFFIC_OUTPUT}")
+
+# ==============================
+# Tìm link từ topology
+# ==============================
+def find_link(source, destination):
+    """Tìm link trực tiếp hoặc qua intermediate nodes"""
+    # Direct link
+    key = (source, destination)
+    if key in topology_map:
+        return topology_map[key]
+    
+    # Reverse direction (có thể bidirectional)
+    reverse_key = (destination, source)
+    if reverse_key in topology_map:
+        link = topology_map[reverse_key].copy()
+        link["source_node"] = source
+        link["destination_node"] = destination
+        return link
+    
+    return None
+
+# ==============================
 # Prediction Service Client
 # ==============================
 def call_prediction_service(csv_path):
@@ -103,64 +147,41 @@ def call_prediction_service(csv_path):
         if response.status_code == 200:
             data = response.json()
             if data.get('status') == 'success' and data.get('prediction'):
-                print(f"✅ Received prediction from service")
+                print(f"✅ Prediction: VAE={data['prediction']['vae_pred']:.2f}%, LSTM={data['prediction']['lstm_pred']:.2f}%")
                 return data['prediction']
             else:
-                print(f"⚠️  Prediction service returned error: {data.get('error')}")
+                print(f"⚠️  Prediction service error: {data.get('error')}")
                 return None
         else:
-            print(f"⚠️  Prediction service error: {response.status_code}")
+            print(f"⚠️  Prediction HTTP error: {response.status_code}")
             return None
             
     except requests.exceptions.ConnectionError:
         print(f"⚠️  Cannot connect to prediction service at {PREDICTION_SERVICE_URL}")
-        print(f"   → Make sure service is running: python prediction_service.py")
+        print(f"   → Start service: python prediction_service.py")
         return None
     except requests.exceptions.Timeout:
-        print(f"⚠️  Prediction service timeout")
+        print(f"⚠️  Prediction timeout")
         return None
     except Exception as e:
-        print(f"⚠️  Error calling prediction service: {e}")
+        print(f"⚠️  Prediction error: {e}")
         return None
 
-def init_traffic_csv():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    
-    if not os.path.exists(TRAFFIC_OUTPUT):
-        headers = [
-            "timestamp", "bytes_sent", "bitrate_bps", "rtt_milliseconds",
-            "loss_rate", "jitter_milliseconds", "link_latency_milliseconds",
-            "capacity_bps", "source_layer", "destination_layer", "link_id",
-            "hour", "day_of_week", "is_weekend", "hour_sin", "hour_cos",
-            "day_sin", "day_cos", "utilization", "throughput_mbps",
-            "quality_score", "efficiency"
-        ]
-        with open(TRAFFIC_OUTPUT, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-        print(f"Initialized traffic CSV: {TRAFFIC_OUTPUT}")
-
-def find_link(source, destination):
-    """Tìm link trực tiếp hoặc qua intermediate nodes"""
-    # Direct link
-    key = (source, destination)
-    if key in topology_map:
-        return topology_map[key]
-    
-    # Reverse direction (có thể bidirectional)
-    reverse_key = (destination, source)
-    if reverse_key in topology_map:
-        link = topology_map[reverse_key].copy()
-        link["source_node"] = source
-        link["destination_node"] = destination
-        return link
-    
-    return None
-
+# ==============================
+# Generate traffic metrics
+# ==============================
 def generate_traffic_metrics(link, content_length):
+    """
+    Generate realistic traffic metrics using TrafficAdapter
+    (Replaces old random generation with training-matched patterns)
+    """
+    # ✅ Use adapter instead of random values
     metrics = traffic_adapter.generate_metrics(link, content_length)
     return metrics
 
+# ==============================
+# Save traffic data to CSV
+# ==============================
 def save_traffic_data(metrics):
     """Append traffic data to CSV file"""
     try:
@@ -176,9 +197,9 @@ def save_traffic_data(metrics):
                 metrics["utilization"], metrics["throughput_mbps"],
                 metrics["quality_score"], metrics["efficiency"]
             ])
-        print(f"Saved traffic data: {metrics['link_id']}")
+        print(f"✅ Saved traffic data: {metrics['link_id']}")
     except Exception as e:
-        print(f"Error saving traffic data: {e}")
+        print(f"❌ Error saving traffic data: {e}")
 
 # ==============================
 # Auto Prediction sau khi save traffic
@@ -196,7 +217,7 @@ def predict_after_save(link_id):
     # CSV path trên host machine (không phải trong container)
     # Docker mounts ./data:/data, nên /data trong container = ./docker/data trên host
     # Prediction service chạy trên host cần absolute path
-    host_csv_path = os.getenv('HOST_TRAFFIC_CSV', '/d/HuyCoding/PBL4/SAGSINs-System/docker/data/traffic_data.csv')
+    host_csv_path = os.getenv('HOST_TRAFFIC_CSV', 'E:/adocument/PBL4/Code/SAGSINs-Simulator/docker/data/traffic_data.csv')
     
     return call_prediction_service(host_csv_path)
 
@@ -285,9 +306,10 @@ def receive_packet():
         
         print(f"🔗 Found link: {link['link_id']}")
         
-        # 2. Generate traffic metrics
-        content_length = len(content.encode('utf-8'))
-        metrics = generate_traffic_metrics(link, content_length)
+        # 2. Generate traffic metrics via adapter
+        # Pass content length to calculate realistic packet size
+        content_length = len(content.encode('utf-8')) if content else None
+        metrics = generate_traffic_metrics(link, content_length=content_length)
         
         # 3. Save to CSV
         save_traffic_data(metrics)
@@ -327,14 +349,61 @@ def receive_packet():
 
 @app.route("/ingest", methods=["POST"])
 def ingest():
-    """Receive traffic data from agent nodes"""
+    """
+    Receive traffic data from agent nodes
+    ⚠️ IMPORTANT: Regenerate metrics via adapter for consistency
+    """
     try:
         data = request.json
-        # Agent gửi đầy đủ metrics, chỉ cần append vào CSV
-        save_traffic_data(data)
-        return jsonify({"status": "success"})
+        
+        # Extract source/destination to find link
+        link_id = data.get('link_id')
+        source_node = data.get('node_id')  # or extract from link_id
+        dest_node = data.get('destination')
+        
+        # Find link in topology
+        link = None
+        if link_id:
+            # Find by link_id
+            for l in topology_links:
+                if l['link_id'] == link_id:
+                    link = l
+                    break
+        elif source_node and dest_node:
+            # Find by source/dest
+            link = find_link(source_node, dest_node)
+        
+        if link:
+            # ✅ Regenerate metrics via adapter for consistency
+            print(f"🔄 Agent traffic → Regenerating via adapter: {link['link_id']}")
+            metrics = generate_traffic_metrics(link, content_length=None)
+            save_traffic_data(metrics)
+            
+            # 🔮 Auto Prediction
+            prediction = predict_after_save(link["link_id"])
+            
+            response = {
+                "status": "success", 
+                "regenerated": True,
+                "link_id": link['link_id'],
+                "timestamp": metrics['timestamp']
+            }
+            
+            # Add prediction nếu có
+            if prediction:
+                response["prediction"] = prediction
+            
+            return jsonify(response)
+        else:
+            # Fallback: save agent data as-is (not recommended)
+            print(f"⚠️  No link found, saving agent data as-is...")
+            save_traffic_data(data)
+            return jsonify({"status": "success", "regenerated": False})
+            
     except Exception as e:
         print(f"❌ Error ingesting data: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/nodes", methods=["GET"])
@@ -366,6 +435,9 @@ def get_topology():
         "links": topology_links
     })
 
+# ==============================
+# Initialize & Run
+# ==============================
 if __name__ == "__main__":
     print("="*60)
     print("🚀 SAGSINs Traffic Server Starting...")
