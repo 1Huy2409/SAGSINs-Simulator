@@ -106,6 +106,23 @@ io.on("connection", (socket) => {
           ).toFixed(1)}%`
         );
       }
+
+      // 🔮 Broadcast prediction to dashboard clients if available
+      if (response.data.prediction) {
+        console.log(
+          `   🔮 Prediction: AVG=${response.data.prediction.average?.utilization_percent?.toFixed(
+            1
+          )}%`
+        );
+
+        // Emit prediction event to all connected dashboard clients
+        io.emit("prediction", {
+          prediction: response.data.prediction,
+          source,
+          destination,
+          timestamp: new Date().toISOString(),
+        });
+      }
     } catch (error) {
       if (error.code === "ECONNREFUSED") {
         console.log("❌ Docker server not reachable (connection refused)");
