@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import socket from "./socket";
 import PacketForm from "./components/PacketForm";
 import PacketLog from "./components/PacketLog";
+import TopologyViewer from "./components/TopologyViewer";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -10,7 +11,6 @@ export default function App() {
   const [nodeId, setNodeId] = useState("");
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [fetchingPackets, setFetchingPackets] = useState(false);
 
   // Fetch danh sách nodes từ API
   useEffect(() => {
@@ -70,215 +70,127 @@ export default function App() {
     ]);
   };
 
-  const handleReceivePackets = async () => {
-    if (!nodeId) {
-      alert("⚠️ Vui lòng chọn Node ID trước!");
-      return;
-    }
-
-    setFetchingPackets(true);
-    try {
-      const response = await fetch(`${API_URL}/packets/${nodeId}`);
-      const packets = await response.json();
-
-      if (packets.length === 0) {
-        alert("📭 Không có packet nào đang chờ!");
-      } else {
-        // Thêm các packet vào logs
-        packets.forEach((packet) => {
-          setLogs((prev) => [
-            ...prev,
-            {
-              type: "RECEIVED",
-              data: {
-                source: packet.from,
-                destination: nodeId,
-                content: packet.content,
-              },
-              time: new Date(packet.timestamp).toLocaleTimeString(),
-            },
-          ]);
-        });
-
-        // Xóa packet queue sau khi đã nhận
-        await fetch(`${API_URL}/packets/${nodeId}`, {
-          method: "DELETE",
-        });
-
-        alert(`📬 Đã nhận ${packets.length} packet(s)!`);
-      }
-    } catch (error) {
-      console.error("Failed to fetch packets:", error);
-      alert("❌ Lỗi khi nhận packets!");
-    } finally {
-      setFetchingPackets(false);
-    }
-  };
-
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        backgroundColor: "#0f1419",
+        backgroundImage: "linear-gradient(135deg, #0f1419 0%, #1a2332 100%)",
         padding: "40px 20px",
         fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
       }}
     >
-      <div
-        style={{
-          maxWidth: "900px",
-          margin: "0 auto",
-          backgroundColor: "rgba(255, 255, 255, 0.95)",
-          borderRadius: "20px",
-          padding: "40px",
-          boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
-        }}
-      >
-        {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: "40px" }}>
-          <h1
-            style={{
-              fontSize: "2.5rem",
-              fontWeight: "bold",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              marginBottom: "10px",
-            }}
-          >
-            🌐 Network Packet Simulator
-          </h1>
-          <p style={{ color: "#666", fontSize: "1rem" }}>
-            Satellite & UAV Communication System
-          </p>
-        </div>
-
-        {/* Node Selection Card */}
-        <div
+      {/* Header */}
+      <div style={{ padding: "10px 20px 60px 20px", paddingBottom: "20px" }}>
+        <h1
           style={{
-            backgroundColor: "#f8f9fa",
-            padding: "25px",
-            borderRadius: "15px",
-            marginBottom: "25px",
-            border: "2px solid #e9ecef",
+            fontSize: "2.5rem",
+            fontWeight: "bold",
+            color: "#ffffff",
+            marginBottom: "10px",
+            display: "flex",
+            justifyContent: "center"
           }}
         >
-          <label
-            style={{
-              display: "block",
-              marginBottom: "10px",
-              fontWeight: "600",
-              fontSize: "1.1rem",
-              color: "#495057",
-            }}
-          >
-            🛰️ Chọn Node ID của bạn:
-          </label>
-          {loading ? (
-            <p style={{ color: "#6c757d", fontStyle: "italic" }}>
-              ⏳ Đang tải danh sách nodes...
-            </p>
-          ) : (
-            <select
-              value={nodeId}
-              onChange={(e) => setNodeId(e.target.value)}
-              style={{
-                padding: "12px 16px",
-                fontSize: "1rem",
-                borderRadius: "10px",
-                border: "2px solid #dee2e6",
-                width: "100%",
-                backgroundColor: "white",
-                cursor: "pointer",
-                transition: "all 0.3s ease",
-                outline: "none",
-              }}
-              onFocus={(e) => (e.target.style.borderColor = "#667eea")}
-              onBlur={(e) => (e.target.style.borderColor = "#dee2e6")}
-            >
-              <option value="">-- Chọn một node --</option>
-              {nodes.map((node) => (
-                <option key={node} value={node}>
-                  {node}
-                </option>
-              ))}
-            </select>
-          )}
-          {nodeId && (
-            <div
-              style={{
-                marginTop: "15px",
-                padding: "12px",
-                backgroundColor: "#d4edda",
-                border: "1px solid #c3e6cb",
-                borderRadius: "8px",
-                color: "#155724",
-                fontSize: "0.9rem",
-              }}
-            >
-              ✅ Connected as: <strong>{nodeId}</strong>
-            </div>
-          )}
+          🌐 Network Packet Simulator
+        </h1>
+        <p style={{ color: "#a0aec0", fontSize: "1rem", display: "flex", justifyContent: "center" }}>
+          Satellite & UAV Communication System
+        </p>
+      </div>
+
+      {/* Main Layout - Sidebar + Content */}
+      <div style={{ display: "flex", gap: "20px" }}>
+        {/* Left Sidebar - Network Topology (Full Height) */}
+        <div style={{ flex: "0 0 380px", height: "100vh", overflow: "hidden", borderRadius: "10px"}}>
+          <TopologyViewer />
         </div>
 
-        {/* Receive Packets Button */}
-        <div style={{ marginBottom: "30px", textAlign: "center" }}>
-          <button
-            onClick={handleReceivePackets}
-            disabled={!nodeId || fetchingPackets}
-            style={{
-              padding: "15px 40px",
-              fontSize: "1.1rem",
-              fontWeight: "bold",
-              borderRadius: "12px",
-              border: "none",
-              background: nodeId && !fetchingPackets
-                ? "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
-                : "#e9ecef",
-              color: nodeId && !fetchingPackets ? "white" : "#adb5bd",
-              cursor: nodeId && !fetchingPackets ? "pointer" : "not-allowed",
-              boxShadow: nodeId && !fetchingPackets
-                ? "0 4px 15px rgba(17, 153, 142, 0.4)"
-                : "none",
-              transition: "all 0.3s ease",
-              transform: "translateY(0)",
-            }}
-            onMouseOver={(e) => {
-              if (nodeId && !fetchingPackets) {
-                e.target.style.transform = "translateY(-2px)";
-                e.target.style.boxShadow = "0 6px 20px rgba(17, 153, 142, 0.6)";
-              }
-            }}
-            onMouseOut={(e) => {
-              e.target.style.transform = "translateY(0)";
-              e.target.style.boxShadow = nodeId && !fetchingPackets
-                ? "0 4px 15px rgba(17, 153, 142, 0.4)"
-                : "none";
-            }}
-          >
-            {fetchingPackets ? "⏳ Đang nhận..." : "📬 Receive Packets"}
-          </button>
-          {!nodeId && (
-            <p style={{ fontSize: "0.9rem", color: "#6c757d", marginTop: "10px" }}>
-              💡 Vui lòng chọn Node ID để nhận packets
-            </p>
-          )}
-        </div>
-
-        {/* Packet Form */}
-        <PacketForm nodeId={nodeId} nodes={nodes} onSend={handleSendPacket} />
-
-        {/* Divider */}
+        {/* Right Content - Node Selection + Packet Form + Log */}
         <div
           style={{
-            height: "2px",
-            background: "linear-gradient(90deg, transparent, #dee2e6, transparent)",
-            margin: "40px 0",
+            flex: "1",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
           }}
-        />
+        >
+          {/* Node Selection */}
+          <div
+            style={{
+              backgroundColor: "#243447",
+              padding: "25px",
+              borderRadius: "15px",
+              border: "1px solid #2c3e50",
+            }}
+          >
+            <label
+              style={{
+                display: "block",
+                marginBottom: "10px",
+                fontWeight: "600",
+                fontSize: "1.1rem",
+                color: "#e2e8f0",
+              }}
+            >
+              🛰️ Chọn Node ID của bạn:
+            </label>
+            {loading ? (
+              <p style={{ color: "#a0aec0", fontStyle: "italic" }}>
+                ⏳ Đang tải danh sách nodes...
+              </p>
+            ) : (
+              <select
+                value={nodeId}
+                onChange={(e) => setNodeId(e.target.value)}
+                style={{
+                  padding: "12px 16px",
+                  fontSize: "1rem",
+                  borderRadius: "10px",
+                  border: "2px solid #2c3e50",
+                  backgroundColor: "#1a2332",
+                  color: "#e2e8f0",
+                  cursor: "pointer",
+                  transition: "all 0.3s ease",
+                  outline: "none",
+                  width: "100%",
+                }}
+                onFocus={(e) => (e.target.style.borderColor = "#00d9ff")}
+                onBlur={(e) => (e.target.style.borderColor = "#2c3e50")}
+              >
+                <option value="">-- Chọn một node --</option>
+                {nodes.map((node) => (
+                  <option key={node} value={node}>
+                    {node}
+                  </option>
+                ))}
+              </select>
+            )}
+            {nodeId && (
+              <div
+                style={{
+                  marginTop: "15px",
+                  padding: "12px",
+                  backgroundColor: "rgba(0, 217, 255, 0.1)",
+                  border: "1px solid #00d9ff",
+                  borderRadius: "8px",
+                  color: "#00d9ff",
+                  fontSize: "0.9rem",
+                }}
+              >
+                ✅ Connected as: <strong>{nodeId}</strong>
+              </div>
+            )}
+          </div>
 
-        {/* Packet Log */}
-        <PacketLog logs={logs} />
+          {/* Packet Form & Log */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <PacketForm nodeId={nodeId} nodes={nodes} onSend={handleSendPacket} />
+            <div style={{ overflow: "auto", maxHeight: "500px" }}>
+              <PacketLog logs={logs} />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
