@@ -14,9 +14,18 @@ if errorlevel 1 (
 echo ✅ Docker is running
 echo.
 
+REM Set HOST_TRAFFIC_CSV environment variable (auto-detect path)
+set "SCRIPT_DIR=%~dp0"
+set "HOST_TRAFFIC_CSV=%SCRIPT_DIR%docker\data\traffic_data.csv"
+echo 📁 Setting HOST_TRAFFIC_CSV=%HOST_TRAFFIC_CSV%
+echo.
+
+REM Update .env file with the correct path
+cd docker
+echo HOST_TRAFFIC_CSV=%HOST_TRAFFIC_CSV%> .env
+
 REM Start Docker containers
 echo 📦 Starting Docker containers...
-cd docker
 docker-compose up -d
 
 if errorlevel 1 (

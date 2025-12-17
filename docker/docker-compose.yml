@@ -13,7 +13,7 @@ services:
       # 🔮 Prediction Service Config (running on host)
       - PREDICTION_SERVICE_URL=http://host.docker.internal:5000
       - PREDICTION_ENABLED=true
-      - HOST_TRAFFIC_CSV=D:\HuyCoding\PBL4\SAGSINs-System\docker\data\traffic_data.csv
+      - HOST_TRAFFIC_CSV=${HOST_TRAFFIC_CSV}
       - TZ=Asia/Ho_Chi_Minh
     extra_hosts:
       # Allow container to access host machine
